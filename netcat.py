@@ -29,6 +29,26 @@ def handle_client(soc):
 		print '[-] Connection closed'
 
 
+def recv_file(soc):
+	buff=soc.recv(1024)
+	recv_len=len(buff)
+	fl_desc=open(buff.split()[0], 'wb')
+	print '[*] Reciving file(%s)...' % fl_desc.name
+	buff=buff.split(' ', 1)[1]
+	try:
+		while recv_len:
+			fl_desc.write(buff)
+			buff=soc.recv(4096)
+			recv_len=len(buff)
+			if(recv_len < 4096):
+				break
+		print '[*] Recived %s' % fl_desc.name
+	finally:
+	 	soc.close()
+		fl_desc.close()
+		print '[-] Connection closed'
+
+
 def server_loop(port):
 	server=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	try:
@@ -38,21 +58,29 @@ def server_loop(port):
 		print '[*] Server started'
 		while True:
 			cl_soc, addr=server.accept()
+			request=cl_soc.recv(1024)
 			print '[+] Connection from %s:%d' % (addr[0], addr[1])
-			cl_soc.send('Python netcat server')
-			cl_handler=threading.Thread(target=handle_client, args=(cl_soc,))
-			cl_handler.start()
+			if request=='session':
+				cl_handler=threading.Thread(target=handle_client, args=(cl_soc,))
+				cl_handler.start()
+			elif request=='upload':
+				cl_handler=threading.Thread(target=recv_file, args=(cl_soc,))
+				cl_handler.start()
+			else:
+				raise Exception('No request.')
 	except Exception as e:
 		print '[!] Interrupted: '+str(e)
+	except KeyboardInterrupt:
+		pass
 	finally:
 		server.close()
 		print '[*] Server closed'
 
 
-def connect(addr, port):
+def start_session(addr, port):
 	soc=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	soc.connect((addr, port))
-	print soc.recv(1024)
+	soc.send('session')
 	try:
 		while True:
 			command=raw_input('pyClient:> ')
@@ -72,15 +100,29 @@ def connect(addr, port):
 	finally:
 		soc.close()
 
+def upload_file(host, port, path):
+	remote=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	try:
+		remote.connect((host, port))
+		remote.send('upload')
+		print 'Sending request(upload)...'
+		with open(path, 'rb') as fl_desc:
+			remote.send(os.path.basename(fl_desc.name)+' ')
+			remote.send(fl_desc.read())
+		print 'DONE'
+	finally:
+		remote.close()
 
 def main():
 	try:
 		if sys.argv[1]=='-s':
 			server_loop(int(sys.argv[2]))
 		elif sys.argv[1]=='-c':
-			connect(sys.argv[2], int(sys.argv[3]))
+			start_session(sys.argv[2], int(sys.argv[3]))
+		elif sys.argv[1]=='-u':
+			upload_file(sys.argv[2], int(sys.argv[3]), sys.argv[4])
 	except IndexError as e:
-		print 'Python netcat\nUsage: python netcat.py {-s PORT | -c HOST PORT}'
+		print 'Python netcat\nUsage: python netcat.py {-s PORT | -c HOST PORT | -u HOST PORT FILE}'
 
 if __name__=='__main__':
 	main()
