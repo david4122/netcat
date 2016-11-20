@@ -66,8 +66,11 @@ def server_loop(port):
 			elif request=='upload':
 				cl_handler=threading.Thread(target=recv_file, args=(cl_soc,))
 				cl_handler.start()
+			elif request=='download':
+				cl_handler=threading.Thread(target=send_file, args=(cl_soc,))
+				cl_handler.start()
 			else:
-				raise Exception('No request.')
+				raise Exception('Bad request: '+request)
 	except Exception as e:
 		print '[!] Interrupted: '+str(e)
 	except KeyboardInterrupt:
@@ -113,6 +116,39 @@ def upload_file(host, port, path):
 	finally:
 		remote.close()
 
+def download_file(host, port, path):
+	print 'Downloading %s' % path
+	remote=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	try:
+		remote.connect((host, port))
+		remote.send('download')
+		if remote.recv(1024)!='download':
+			return
+		remote.send(os.path.basename(path))
+		with open(os.path.basename(path), 'wb') as desc:
+			recv_len=1
+			while recv_len:
+				buff=remote.recv(4096)
+				desc.write(buff)
+				recv_len=len(buff)
+				if recv_len < 4096:
+					break
+		print 'Done'
+	finally:
+		remote.close()
+
+def send_file(client):
+	try:
+		client.send('download')
+		path=client.recv(1024)
+		print '[*] Sending file(%s)...' % path
+		with open(path, 'rb') as desc:
+			client.send(desc.read())
+		print '[*] File %s sent' % path
+	finally:
+		client.close()
+		print '[-] Connection closed.'
+
 def main():
 	try:
 		if sys.argv[1]=='-s':
@@ -121,6 +157,8 @@ def main():
 			start_session(sys.argv[2], int(sys.argv[3]))
 		elif sys.argv[1]=='-u':
 			upload_file(sys.argv[2], int(sys.argv[3]), sys.argv[4])
+		elif sys.argv[1]=='-d':
+			download_file(sys.argv[2], int(sys.argv[3]), sys.argv[4])
 	except IndexError as e:
 		print 'Python netcat\nUsage: python netcat.py {-s PORT | -c HOST PORT | -u HOST PORT FILE}'
 
