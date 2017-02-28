@@ -15,13 +15,16 @@ def handle_client(soc):
 					path=command[1]
 				else:
 					path+='/'+command[1]
-				response=path
+				result=path
 			else:
 				try:
 					result=subprocess.check_output(' '.join(command), stderr=subprocess.STDOUT, shell=True, cwd=path)
 				except Exception as e:
 					result=str(e)
-			soc.send(result)
+			if len(result):
+				soc.send(result)
+			else:
+				soc.send('-')
 	except Exception as e:
 		print 'ERROR: '+str(e)
 	finally:
@@ -30,16 +33,16 @@ def handle_client(soc):
 
 
 def recv_file(soc):
+	soc.send('upload')
 	buff=soc.recv(1024)
 	recv_len=len(buff)
-	fl_desc=open(buff.split()[0], 'wb')
+	fl_desc=open(buff, 'wb')
 	print '[*] Reciving file(%s)...' % fl_desc.name
-	buff=buff.split(' ', 1)[1]
 	try:
 		while recv_len:
-			fl_desc.write(buff)
 			buff=soc.recv(4096)
 			recv_len=len(buff)
+			fl_desc.write(buff)
 			if(recv_len < 4096):
 				break
 		print '[*] Recived %s' % fl_desc.name
@@ -82,7 +85,9 @@ def server_loop(port):
 
 def start_session(addr, port):
 	soc=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	print 'Connecting...'
 	soc.connect((addr, port))
+	print 'Sending reuest...'
 	soc.send('session')
 	try:
 		while True:
@@ -109,6 +114,9 @@ def upload_file(host, port, path):
 		remote.connect((host, port))
 		remote.send('upload')
 		print 'Sending request(upload)...'
+		if remote.recv(1024)!='upload':
+			return
+		print 'Connected'
 		with open(path, 'rb') as fl_desc:
 			remote.send(os.path.basename(fl_desc.name)+' ')
 			remote.send(fl_desc.read())
